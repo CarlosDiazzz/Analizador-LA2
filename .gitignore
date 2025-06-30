@@ -1,0 +1,23 @@
+# NetBeans-specific files
+nbproject/private/
+build/
+nbbuild/
+dist/
+nbdist/
+.nb-gradle/
+
+# Maven or Gradle target folders (si aplica)
+target/
+build/
+
+# Archivos temporales y del sistema
+*.class
+*.log
+*.bak
+*.swp
+*.tmp
+*.DS_Store
+Thumbs.db
+
+# Archivos de entorno
+.env
