@@ -692,7 +692,7 @@ public class AnalizadorLexico extends javax.swing.JFrame {
                     .findFirst();
 
             if (velocidad.isPresent()) {
-                int ms = velocidad.get().getValor() * 1000;
+                int ms = velocidad.get().getValor() * 1;
                 try {
                     Thread.sleep(ms);
                 } catch (InterruptedException e) {
