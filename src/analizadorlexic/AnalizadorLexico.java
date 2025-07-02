@@ -17,11 +17,9 @@ import java.io.FileWriter;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
-import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
-import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import javax.swing.JFileChooser;
 import javax.swing.JOptionPane;
@@ -32,7 +30,6 @@ import javax.swing.event.DocumentListener;
 import javax.swing.filechooser.FileNameExtensionFilter;
 import javax.swing.text.BadLocationException;
 import javax.swing.text.DefaultHighlighter;
-import javax.swing.text.DefaultHighlighter.DefaultHighlightPainter;
 import javax.swing.text.Highlighter;
 
 /**
@@ -231,10 +228,6 @@ public class AnalizadorLexico extends javax.swing.JFrame {
     }// </editor-fold>//GEN-END:initComponents
 
     private void btnAnalizarActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_btnAnalizarActionPerformed
-//        String[] palabrasReservadas = {"if", "else", "while", "int", "float", "return","class","public"}; // se puede reemplazar
-//        Pattern patron = Pattern.compile("\\s*(?:(\\d+)|([a-zA-Z_]\\w*)|([+\\-*/=<>])|(;)|([(){}]))");
-//        analizar(txtEntrada.getText(), palabrasReservadas, patron);
-
         analizar(txtEntrada.getText());
         guardarArchivoButton.setEnabled(false);
         guardarArchivoButton.setEnabled(false);
@@ -338,6 +331,7 @@ public class AnalizadorLexico extends javax.swing.JFrame {
     }
 
     private void analizar(String entrada) {
+
         List<Token> tokens = new ArrayList<>();
         tablaSimbolos.clear();
         txtSalida.setText("");
@@ -345,7 +339,7 @@ public class AnalizadorLexico extends javax.swing.JFrame {
 
         Pattern patronID = Pattern.compile("^[A-Z]+[0-9]*$", Pattern.CASE_INSENSITIVE);
         Pattern patronValor = Pattern.compile("^\\d+$");
-        Set<String> comandos = Set.of("base", "codo", "hombro", "garra");
+        Set<String> comandos = Set.of("base", "codo", "hombro", "garra", "velocidad", "repetir");
 
         boolean huboError = false;
         String[] palabras = entrada.split("\\s+");
@@ -429,6 +423,64 @@ public class AnalizadorLexico extends javax.swing.JFrame {
                         continue;
                     }
 
+                    // Manejo especial para repetir
+                    if (comb.equalsIgnoreCase("repetir")) {
+                        if (!valor.matches("\\d+")) {
+                            lanzarErrorLinea("Repeticiones inválidas: se esperaba un número", valor);
+                            tokens.add(new Token("ERROR", valor));
+                            huboError = true;
+                            i++;
+                            continue;
+                        }
+
+                        int repeticiones = Integer.parseInt(valor);
+                        if (repeticiones < 1 || repeticiones > 100) {
+                            lanzarErrorLinea("Repeticiones fuera de rango (1 a 100): " + repeticiones, valor);
+                            tokens.add(new Token("ERROR", valor));
+                            huboError = true;
+                            i++;
+                            continue;
+                        }
+
+                        int j = i + 3;
+                        List<String> bloque = new ArrayList<>();
+
+                        if (j >= palabras.length || !palabras[j].equals("{")) {
+                            lanzarErrorLinea("Falta '{' para abrir el bloque de repetición", palabras[j]);
+                            tokens.add(new Token("ERROR", palabras[j]));
+                            huboError = true;
+                            i++;
+                            continue;
+                        }
+
+                        j++;
+                        while (j < palabras.length && !palabras[j].equals("}")) {
+                            bloque.add(palabras[j]);
+                            j++;
+                        }
+
+                        if (j >= palabras.length || !palabras[j].equals("}")) {
+                            lanzarErrorLinea("Falta '}' para cerrar el bloque de repetición", valor);
+                            tokens.add(new Token("ERROR", valor));
+                            huboError = true;
+                            break;
+                        }
+
+                        String bloqueTexto = String.join(" ", bloque);
+                        for (int r = 0; r < repeticiones; r++) {
+                            analizarBloque(bloqueTexto, tokens);
+                        }
+
+                        tokens.add(new Token("IDENTIFICADOR", id));
+                        tokens.add(new Token("OPERADOR", "."));
+                        tokens.add(new Token("COMANDO", "repetir"));
+                        tokens.add(new Token("OPERADOR", "="));
+                        tokens.add(new Token("NUMERO", String.valueOf(repeticiones)));
+
+                        i = j + 1;
+                        continue;
+                    }
+
                     if (!patronValor.matcher(valor).matches()) {
                         lanzarErrorLinea("Valor numérico inválido: " + valor, valor);
                         tokens.add(new Token("ERROR", valor));
@@ -445,6 +497,8 @@ public class AnalizadorLexico extends javax.swing.JFrame {
                             valorNumerico >= 0 && valorNumerico <= 180;
                         case "garra" ->
                             valorNumerico >= 0 && valorNumerico <= 90;
+                        case "velocidad" ->
+                            valorNumerico >= 1 && valorNumerico <= 60;
                         default ->
                             false;
                     };
@@ -532,15 +586,6 @@ public class AnalizadorLexico extends javax.swing.JFrame {
         }
     }
 
-    private boolean esNumero(String texto) {
-        return texto.matches("\\d+");
-    }
-
-    private void lanzarError(int linea, String contenido, String mensaje) {
-        txtSalida.append("!! Línea " + (linea + 1) + ": " + mensaje + " → \"" + contenido + "\"\n");
-        pintarLineaRoja(txtEntrada, linea);
-    }
-
     private void lanzarErrorLinea(String mensaje, String contenido) {
         txtSalida.append("❌ Error: " + mensaje + " → \"" + contenido + "\"\n");
 
@@ -559,6 +604,105 @@ public class AnalizadorLexico extends javax.swing.JFrame {
         }
     }
 
+    private void analizarBloque(String entrada, List<Token> tokens) {
+        String[] palabras = entrada.split("\\s+");
+        Pattern patronID = Pattern.compile("^[A-Z]+[0-9]*$", Pattern.CASE_INSENSITIVE);
+        Pattern patronValor = Pattern.compile("^\\d+$");
+        Set<String> comandos = Set.of("base", "codo", "hombro", "garra", "velocidad");
+
+        int i = 0;
+        while (i < palabras.length) {
+            String full = palabras[i];
+            if (i + 2 >= palabras.length) {
+                break;
+            }
+
+            String[] partes = full.split("\\.");
+            if (partes.length != 2) {
+                break;
+            }
+
+            String id = partes[0];
+            String comb = partes[1];
+            String operador = palabras[i + 1];
+            String valor = palabras[i + 2];
+
+            if (!operador.equals("=") || !patronValor.matcher(valor).matches()) {
+                break;
+            }
+
+            int valorNumerico = Integer.parseInt(valor);
+
+            if (!tablaSimbolos.stream().anyMatch(s -> s.getId().equalsIgnoreCase(id) && s.getMetodo().equals("robot"))) {
+                lanzarErrorLinea("Robot no ha sido declarado: " + id, full);
+                tokens.add(new Token("ERROR", full));
+                i += 3;
+                continue;
+            }
+
+            if (!comandos.contains(comb.toLowerCase())) {
+                lanzarErrorLinea("Comando inválido: " + comb, comb);
+                tokens.add(new Token("ERROR", comb));
+                i += 3;
+                continue;
+            }
+
+            if (comb.equalsIgnoreCase("velocidad")) {
+                if (valorNumerico < 0 || valorNumerico > 10) {
+                    lanzarErrorLinea("Velocidad fuera de rango (0-10 segundos): " + valor, valor);
+                    tokens.add(new Token("ERROR", valor));
+                    i += 3;
+                    continue;
+                }
+
+                tablaSimbolos.removeIf(s -> s.getId().equalsIgnoreCase(id) && s.getMetodo().equalsIgnoreCase("velocidad"));
+                tablaSimbolos.add(new Simbolo(id, "velocidad", 1, valorNumerico));
+            } else {
+                boolean valorValido = switch (comb.toLowerCase()) {
+                    case "base" ->
+                        valorNumerico >= 0 && valorNumerico <= 360;
+                    case "hombro", "codo" ->
+                        valorNumerico >= 0 && valorNumerico <= 180;
+                    case "garra" ->
+                        valorNumerico >= 0 && valorNumerico <= 90;
+                    default ->
+                        false;
+                };
+
+                if (!valorValido) {
+                    lanzarErrorLinea("Valor fuera de rango para " + comb + ": " + valor, valor);
+                    tokens.add(new Token("ERROR", valor));
+                    i += 3;
+                    continue;
+                }
+
+                tablaSimbolos.removeIf(s -> s.getId().equalsIgnoreCase(id) && s.getMetodo().equalsIgnoreCase(comb));
+                tablaSimbolos.add(new Simbolo(id, comb, 1, valorNumerico));
+            }
+
+            tokens.add(new Token("IDENTIFICADOR", id));
+            tokens.add(new Token("OPERADOR", "."));
+            tokens.add(new Token("COMANDO", comb));
+            tokens.add(new Token("OPERADOR", "="));
+            tokens.add(new Token("NUMERO", valor));
+
+            // Aplicar pausa si hay velocidad
+            Optional<Simbolo> velocidad = tablaSimbolos.stream()
+                    .filter(s -> s.getId().equalsIgnoreCase(id) && s.getMetodo().equalsIgnoreCase("velocidad"))
+                    .findFirst();
+
+            if (velocidad.isPresent()) {
+                int ms = velocidad.get().getValor() * 1000;
+                try {
+                    Thread.sleep(ms);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+            }
+
+            i += 3;
+        }
+    }
 
     // Variables declaration - do not modify//GEN-BEGIN:variables
     private javax.swing.JButton btnAnalizar;
