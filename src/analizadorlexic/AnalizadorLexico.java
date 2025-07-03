@@ -126,6 +126,7 @@ public class AnalizadorLexico extends javax.swing.JFrame {
         jScrollPane1.setViewportView(txtEntrada);
 
         txtSalida.setColumns(20);
+        txtSalida.setFont(new java.awt.Font("Courier New", 0, 14)); // NOI18N
         txtSalida.setRows(5);
         jScrollPane2.setViewportView(txtSalida);
 
@@ -331,7 +332,6 @@ public class AnalizadorLexico extends javax.swing.JFrame {
     }
 
     private void analizar(String entrada) {
-
         List<Token> tokens = new ArrayList<>();
         tablaSimbolos.clear();
         txtSalida.setText("");
@@ -353,8 +353,8 @@ public class AnalizadorLexico extends javax.swing.JFrame {
                 if (actual.equalsIgnoreCase("Robot")) {
                     if (i + 1 < palabras.length && patronID.matcher(palabras[i + 1]).matches()) {
                         robotID = palabras[i + 1];
-
                         final String robotIDCopia = robotID;
+
                         boolean yaExiste = tablaSimbolos.stream()
                                 .anyMatch(s -> s.getId().equalsIgnoreCase(robotIDCopia) && s.getMetodo().equals("robot"));
 
@@ -365,13 +365,10 @@ public class AnalizadorLexico extends javax.swing.JFrame {
                             continue;
                         }
 
-                        tokens.add(new Token("PALABRA_RESERVADA", "Robot"));
-                        tokens.add(new Token("IDENTIFICADOR", robotID));
                         tablaSimbolos.add(new Simbolo(robotID, "robot", 0, 0));
                         i += 2;
                     } else {
                         lanzarErrorLinea("Declaración de Robot inválida: falta identificador", actual);
-                        tokens.add(new Token("ERROR", actual));
                         huboError = true;
                         i++;
                     }
@@ -384,7 +381,6 @@ public class AnalizadorLexico extends javax.swing.JFrame {
 
                     if (partes.length != 2) {
                         lanzarErrorLinea("Sintaxis inválida, se esperaba ID.comando", full);
-                        tokens.add(new Token("ERROR", full));
                         huboError = true;
                         i++;
                         continue;
@@ -398,7 +394,6 @@ public class AnalizadorLexico extends javax.swing.JFrame {
 
                     if (!robotDeclarado) {
                         lanzarErrorLinea("Robot no ha sido declarado: " + id, full);
-                        tokens.add(new Token("ERROR", id));
                         huboError = true;
                         i++;
                         continue;
@@ -406,7 +401,6 @@ public class AnalizadorLexico extends javax.swing.JFrame {
 
                     if (!comandos.contains(comb.toLowerCase())) {
                         lanzarErrorLinea("Comando inválido: " + comb, comb);
-                        tokens.add(new Token("ERROR", comb));
                         huboError = true;
                         i++;
                         continue;
@@ -417,17 +411,14 @@ public class AnalizadorLexico extends javax.swing.JFrame {
 
                     if (!operador.equals("=")) {
                         lanzarErrorLinea("Falta operador '='", operador);
-                        tokens.add(new Token("ERROR", operador));
                         huboError = true;
                         i++;
                         continue;
                     }
 
-                    // Manejo especial para repetir
                     if (comb.equalsIgnoreCase("repetir")) {
                         if (!valor.matches("\\d+")) {
                             lanzarErrorLinea("Repeticiones inválidas: se esperaba un número", valor);
-                            tokens.add(new Token("ERROR", valor));
                             huboError = true;
                             i++;
                             continue;
@@ -436,7 +427,6 @@ public class AnalizadorLexico extends javax.swing.JFrame {
                         int repeticiones = Integer.parseInt(valor);
                         if (repeticiones < 1 || repeticiones > 100) {
                             lanzarErrorLinea("Repeticiones fuera de rango (1 a 100): " + repeticiones, valor);
-                            tokens.add(new Token("ERROR", valor));
                             huboError = true;
                             i++;
                             continue;
@@ -447,7 +437,6 @@ public class AnalizadorLexico extends javax.swing.JFrame {
 
                         if (j >= palabras.length || !palabras[j].equals("{")) {
                             lanzarErrorLinea("Falta '{' para abrir el bloque de repetición", palabras[j]);
-                            tokens.add(new Token("ERROR", palabras[j]));
                             huboError = true;
                             i++;
                             continue;
@@ -461,7 +450,6 @@ public class AnalizadorLexico extends javax.swing.JFrame {
 
                         if (j >= palabras.length || !palabras[j].equals("}")) {
                             lanzarErrorLinea("Falta '}' para cerrar el bloque de repetición", valor);
-                            tokens.add(new Token("ERROR", valor));
                             huboError = true;
                             break;
                         }
@@ -471,19 +459,12 @@ public class AnalizadorLexico extends javax.swing.JFrame {
                             analizarBloque(bloqueTexto, tokens);
                         }
 
-                        tokens.add(new Token("IDENTIFICADOR", id));
-                        tokens.add(new Token("OPERADOR", "."));
-                        tokens.add(new Token("COMANDO", "repetir"));
-                        tokens.add(new Token("OPERADOR", "="));
-                        tokens.add(new Token("NUMERO", String.valueOf(repeticiones)));
-
                         i = j + 1;
                         continue;
                     }
 
                     if (!patronValor.matcher(valor).matches()) {
                         lanzarErrorLinea("Valor numérico inválido: " + valor, valor);
-                        tokens.add(new Token("ERROR", valor));
                         huboError = true;
                         i++;
                         continue;
@@ -505,25 +486,12 @@ public class AnalizadorLexico extends javax.swing.JFrame {
 
                     if (!valorValido) {
                         lanzarErrorLinea("Valor fuera de rango para " + comb + ": " + valor, valor);
-                        tokens.add(new Token("ERROR", valor));
                         huboError = true;
                         i += 3;
                         continue;
                     }
 
-                    boolean yaAsignado = tablaSimbolos.stream()
-                            .anyMatch(s -> s.getId().equalsIgnoreCase(id) && s.getMetodo().equalsIgnoreCase(comb));
-
-                    if (yaAsignado) {
-                        tablaSimbolos.removeIf(s -> s.getId().equalsIgnoreCase(id) && s.getMetodo().equalsIgnoreCase(comb));
-                    }
-
-                    tokens.add(new Token("IDENTIFICADOR", id));
-                    tokens.add(new Token("OPERADOR", "."));
-                    tokens.add(new Token("COMANDO", comb));
-                    tokens.add(new Token("OPERADOR", "="));
-                    tokens.add(new Token("NUMERO", valor));
-
+                    tablaSimbolos.removeIf(s -> s.getId().equalsIgnoreCase(id) && s.getMetodo().equalsIgnoreCase(comb));
                     tablaSimbolos.add(new Simbolo(id, comb, 1, valorNumerico));
                     i += 3;
                 } else {
@@ -534,29 +502,22 @@ public class AnalizadorLexico extends javax.swing.JFrame {
                     String errorContenido = restante.toString().trim();
                     lanzarErrorLinea("Expresión incompleta: se esperaban ID.comando = valor", errorContenido);
                     pintarPrimeraLineaCon(errorContenido);
-                    tokens.add(new Token("ERROR", errorContenido));
                     break;
                 }
             } catch (Exception e) {
                 lanzarErrorLinea("Error inesperado: " + e.getMessage(), actual);
-                tokens.add(new Token("ERROR", "Excepción"));
                 huboError = true;
                 i++;
             }
         }
 
-        for (Token t : tokens) {
-            if (!t.getTipo().equals("ERROR")) {
-                txtSalida.append("[" + t.getTipo() + "] → " + t.getValor() + "\n");
-            }
-        }
-
+        // Solo se imprime la tabla de símbolos si no hubo errores
         if (!huboError) {
-            txtSalida.append("✅ Análisis correcto. ¡OK!\n");
-            txtSalida.append("\n🔧 Tabla de símbolos:\n");
-            txtSalida.append(String.format("%-5s %-10s %-10s %-10s\n", "ID", "MÉTODO", "PARÁMETRO", "VALOR"));
+            txtSalida.append("🔧 Tabla de símbolos:\n\n");
+            txtSalida.append(String.format("%-10s %-12s %-12s %-10s\n", "ID", "MÉTODO", "PARÁMETRO", "VALOR"));
             for (Simbolo s : tablaSimbolos) {
-                txtSalida.append(s.toString() + "\n");
+                txtSalida.append(String.format("%-10s %-12s %-12d %-10d\n",
+                        s.getId(), s.getMetodo(), s.getParametro(), s.getValor()));
             }
         }
     }
