@@ -17,7 +17,9 @@ import java.io.FileWriter;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.regex.Pattern;
@@ -39,6 +41,10 @@ import javax.swing.text.Highlighter;
 public class AnalizadorLexico extends javax.swing.JFrame {
 
     private List<Simbolo> tablaSimbolos = new ArrayList<>();
+    List<Cuadruplo> cuadruplos = new ArrayList<>();
+    int contadorCuadruplos = 0;
+    int contadorTemporales = 0;
+    int contadorLoops = 0;
 
     /**
      * Creates new form AnalizadorLexico
@@ -334,45 +340,54 @@ public class AnalizadorLexico extends javax.swing.JFrame {
     private void analizar(String entrada) {
         List<Token> tokens = new ArrayList<>();
         tablaSimbolos.clear();
+        cuadruplos.clear();
+        contadorCuadruplos = 0;
+
         txtSalida.setText("");
         txtEntrada.getHighlighter().removeAllHighlights();
+
+        StringBuilder salidaLexico = new StringBuilder("🔍 Análisis Léxico:\n");
+        StringBuilder salidaSintactico = new StringBuilder("🧩 Análisis Sintáctico:\n");
+        StringBuilder salidaSemantico = new StringBuilder("🧠 Análisis Semántico:\n");
 
         Pattern patronID = Pattern.compile("^[A-Z]+[0-9]*$", Pattern.CASE_INSENSITIVE);
         Pattern patronValor = Pattern.compile("^\\d+$");
         Set<String> comandos = Set.of("base", "codo", "hombro", "garra", "velocidad", "repetir");
 
-        boolean huboError = false;
         String[] palabras = entrada.split("\\s+");
-        String robotID = null;
-
         int i = 0;
+
         while (i < palabras.length) {
             String actual = palabras[i];
-
             try {
+                if (!actual.matches("^[a-zA-Z0-9.={}]+$")) {
+                    salidaLexico.append("❌ Error léxico: token inválido → \"").append(actual).append("\"\n");
+                    lanzarErrorLinea("Token no reconocido", actual);
+                    return;
+                }
+                salidaLexico.append("✔ Token válido: ").append(actual).append("\n");
+
+                // Declaración de robot
                 if (actual.equalsIgnoreCase("Robot")) {
                     if (i + 1 < palabras.length && patronID.matcher(palabras[i + 1]).matches()) {
-                        robotID = palabras[i + 1];
-                        final String robotIDCopia = robotID;
+                        String robotID = palabras[i + 1];
+                        salidaSintactico.append("✔ Declaración de robot: ").append(robotID).append("\n");
 
-                        boolean yaExiste = tablaSimbolos.stream()
-                                .anyMatch(s -> s.getId().equalsIgnoreCase(robotIDCopia) && s.getMetodo().equals("robot"));
-
-                        if (yaExiste) {
-                            lanzarErrorLinea("Robot ya fue declarado anteriormente: " + robotID, robotID);
-                            huboError = true;
-                            i += 2;
-                            continue;
+                        if (tablaSimbolos.stream().anyMatch(s -> s.getId().equalsIgnoreCase(robotID) && s.getMetodo().equals("robot"))) {
+                            salidaSemantico.append("❌ Error semántico: Robot ya declarado → \"").append(robotID).append("\"\n");
+                            lanzarErrorLinea("Robot ya fue declarado anteriormente", robotID);
+                            return;
                         }
 
                         tablaSimbolos.add(new Simbolo(robotID, "robot", 0, 0));
+                        cuadruplos.add(new Cuadruplo("CREATE", "Robot", "—", robotID));
                         i += 2;
+                        continue;
                     } else {
-                        lanzarErrorLinea("Declaración de Robot inválida: falta identificador", actual);
-                        huboError = true;
-                        i++;
+                        salidaSintactico.append("❌ Error sintáctico: Falta identificador tras 'Robot'\n");
+                        lanzarErrorLinea("Falta identificador tras 'Robot'", actual);
+                        return;
                     }
-                    continue;
                 }
 
                 if (i + 2 < palabras.length) {
@@ -380,148 +395,314 @@ public class AnalizadorLexico extends javax.swing.JFrame {
                     String[] partes = full.split("\\.");
 
                     if (partes.length != 2) {
+                        salidaSintactico.append("❌ Error sintáctico: Se esperaba ID.comando → \"").append(full).append("\"\n");
                         lanzarErrorLinea("Sintaxis inválida, se esperaba ID.comando", full);
-                        huboError = true;
-                        i++;
-                        continue;
+                        return;
                     }
 
                     String id = partes[0];
-                    String comb = partes[1];
+                    String comando = partes[1];
 
-                    boolean robotDeclarado = tablaSimbolos.stream()
-                            .anyMatch(s -> s.getId().equalsIgnoreCase(id) && s.getMetodo().equals("robot"));
-
-                    if (!robotDeclarado) {
-                        lanzarErrorLinea("Robot no ha sido declarado: " + id, full);
-                        huboError = true;
-                        i++;
-                        continue;
+                    if (!tablaSimbolos.stream().anyMatch(s -> s.getId().equalsIgnoreCase(id) && s.getMetodo().equals("robot"))) {
+                        salidaSemantico.append("❌ Error semántico: Robot no declarado → \"").append(id).append("\"\n");
+                        lanzarErrorLinea("Robot no ha sido declarado", id);
+                        return;
                     }
 
-                    if (!comandos.contains(comb.toLowerCase())) {
-                        lanzarErrorLinea("Comando inválido: " + comb, comb);
-                        huboError = true;
-                        i++;
-                        continue;
+                    if (!comandos.contains(comando.toLowerCase())) {
+                        salidaSemantico.append("❌ Error semántico: Comando inválido → \"").append(comando).append("\"\n");
+                        lanzarErrorLinea("Comando no reconocido", comando);
+                        return;
                     }
 
                     String operador = palabras[i + 1];
                     String valor = palabras[i + 2];
 
                     if (!operador.equals("=")) {
-                        lanzarErrorLinea("Falta operador '='", operador);
-                        huboError = true;
-                        i++;
-                        continue;
+                        salidaSintactico.append("❌ Error sintáctico: Se esperaba '=' después del comando\n");
+                        lanzarErrorLinea("Falta '=' después del comando", operador);
+                        return;
                     }
 
-                    if (comb.equalsIgnoreCase("repetir")) {
-                        if (!valor.matches("\\d+")) {
-                            lanzarErrorLinea("Repeticiones inválidas: se esperaba un número", valor);
-                            huboError = true;
-                            i++;
-                            continue;
+                    if (!patronValor.matcher(valor).matches()) {
+                        salidaSemantico.append("❌ Error semántico: Valor numérico inválido → \"").append(valor).append("\"\n");
+                        lanzarErrorLinea("Valor inválido", valor);
+                        return;
+                    }
+
+                    int val = Integer.parseInt(valor);
+
+                    // Repetir (bloque)
+                    if (comando.equalsIgnoreCase("repetir")) {
+                        if (val < 1 || val > 100) {
+                            salidaSemantico.append("❌ Error semántico: Valor de repetición fuera de rango → ").append(val).append("\n");
+                            lanzarErrorLinea("Repeticiones fuera de rango", valor);
+                            return;
                         }
 
-                        int repeticiones = Integer.parseInt(valor);
-                        if (repeticiones < 1 || repeticiones > 100) {
-                            lanzarErrorLinea("Repeticiones fuera de rango (1 a 100): " + repeticiones, valor);
-                            huboError = true;
-                            i++;
-                            continue;
+                        if (i + 3 >= palabras.length || !palabras[i + 3].equals("{")) {
+                            salidaSintactico.append("❌ Error sintáctico: Falta '{' para abrir el bloque de repetición\n");
+                            lanzarErrorLinea("Falta '{' para abrir el bloque", palabras[i + 3]);
+                            return;
                         }
 
-                        int j = i + 3;
+                        int j = i + 4;
                         List<String> bloque = new ArrayList<>();
 
-                        if (j >= palabras.length || !palabras[j].equals("{")) {
-                            lanzarErrorLinea("Falta '{' para abrir el bloque de repetición", palabras[j]);
-                            huboError = true;
-                            i++;
-                            continue;
-                        }
-
-                        j++;
                         while (j < palabras.length && !palabras[j].equals("}")) {
                             bloque.add(palabras[j]);
                             j++;
                         }
 
                         if (j >= palabras.length || !palabras[j].equals("}")) {
-                            lanzarErrorLinea("Falta '}' para cerrar el bloque de repetición", valor);
-                            huboError = true;
-                            break;
+                            salidaSintactico.append("❌ Error sintáctico: Falta '}' para cerrar el bloque de repetición\n");
+                            lanzarErrorLinea("Falta '}' para cerrar el bloque", valor);
+                            return;
                         }
+
+                        String loopVar = "contador" + (contadorCuadruplos++);
+                        String loopID = "loop" + (contadorCuadruplos++);
+                        cuadruplos.add(new Cuadruplo("CREATE", id, "—", loopVar));
+                        cuadruplos.add(new Cuadruplo("=", valor, "—", loopVar));
+                        cuadruplos.add(new Cuadruplo("CREATE", "Loop", "—", loopID));
+                        cuadruplos.add(new Cuadruplo("ASSOC", loopVar, "—", loopID + ".contador"));
+                        cuadruplos.add(new Cuadruplo("ASSOC", loopID, "—", id + ".repetir"));
+
+                        salidaSintactico.append("✔ Bloque de repetición detectado con ").append(val).append(" repeticiones\n");
+                        salidaSemantico.append("✔ Ejecutando bloque ").append(val).append(" veces\n");
 
                         String bloqueTexto = String.join(" ", bloque);
-                        for (int r = 0; r < repeticiones; r++) {
-                            analizarBloque(bloqueTexto, tokens);
+                        for (int r = 0; r < val; r++) {
+                            analizarBloque(bloqueTexto, tokens); // SIN CUÁDRUPLOS
                         }
 
+                        cuadruplos.add(new Cuadruplo("EXEC_LOOP", id + ".repetir", "—", "—"));
                         i = j + 1;
                         continue;
                     }
 
-                    if (!patronValor.matcher(valor).matches()) {
-                        lanzarErrorLinea("Valor numérico inválido: " + valor, valor);
-                        huboError = true;
-                        i++;
-                        continue;
-                    }
-
-                    int valorNumerico = Integer.parseInt(valor);
-                    boolean valorValido = switch (comb.toLowerCase()) {
+                    // Validar rango
+                    boolean valido = switch (comando.toLowerCase()) {
                         case "base" ->
-                            valorNumerico >= 0 && valorNumerico <= 360;
+                            val >= 0 && val <= 360;
                         case "hombro", "codo" ->
-                            valorNumerico >= 0 && valorNumerico <= 180;
+                            val >= 0 && val <= 180;
                         case "garra" ->
-                            valorNumerico >= 0 && valorNumerico <= 90;
+                            val >= 0 && val <= 90;
                         case "velocidad" ->
-                            valorNumerico >= 1 && valorNumerico <= 60;
+                            val >= 1 && val <= 60;
                         default ->
                             false;
                     };
 
-                    if (!valorValido) {
-                        lanzarErrorLinea("Valor fuera de rango para " + comb + ": " + valor, valor);
-                        huboError = true;
-                        i += 3;
-                        continue;
+                    if (!valido) {
+                        salidaSemantico.append("❌ Error semántico: Valor fuera de rango para ").append(comando).append(" → ").append(val).append("\n");
+                        lanzarErrorLinea("Valor fuera de rango para " + comando, valor);
+                        return;
                     }
 
-                    tablaSimbolos.removeIf(s -> s.getId().equalsIgnoreCase(id) && s.getMetodo().equalsIgnoreCase(comb));
-                    tablaSimbolos.add(new Simbolo(id, comb, 1, valorNumerico));
+                    // Agregar a tabla de símbolos
+                    tablaSimbolos.removeIf(s -> s.getId().equalsIgnoreCase(id) && s.getMetodo().equalsIgnoreCase(comando));
+                    tablaSimbolos.add(new Simbolo(id, comando, 1, val));
+
+                    salidaSintactico.append("✔ Asignación: ").append(full).append(" = ").append(valor).append("\n");
+                    salidaSemantico.append("✔ Valor válido asignado a ").append(full).append("\n");
+
+                    // Cuádruplos para velocidad
+                    if (comando.equalsIgnoreCase("velocidad")) {
+                        String tempVel = "vel" + (contadorCuadruplos++);
+                        cuadruplos.add(new Cuadruplo("CREATE", id, "—", tempVel));
+                        cuadruplos.add(new Cuadruplo("=", valor, "—", tempVel));
+                        cuadruplos.add(new Cuadruplo("ASSOC", tempVel, "—", id + ".velocidad"));
+                    } else {
+                        cuadruplos.add(new Cuadruplo("CALL", id, valor, comando));
+                    }
+
                     i += 3;
                 } else {
-                    StringBuilder restante = new StringBuilder();
-                    for (int j = i; j < palabras.length; j++) {
-                        restante.append(palabras[j]).append(" ");
-                    }
-                    String errorContenido = restante.toString().trim();
-                    lanzarErrorLinea("Expresión incompleta: se esperaban ID.comando = valor", errorContenido);
-                    pintarPrimeraLineaCon(errorContenido);
-                    break;
+                    salidaSintactico.append("❌ Error sintáctico: Expresión incompleta\n");
+                    lanzarErrorLinea("Expresión incompleta", actual);
+                    return;
                 }
             } catch (Exception e) {
-                lanzarErrorLinea("Error inesperado: " + e.getMessage(), actual);
-                huboError = true;
-                i++;
+                txtSalida.append("❌ Error inesperado: " + e.getMessage());
+                return;
             }
         }
 
-        // Solo se imprime la tabla de símbolos si no hubo errores
-        if (!huboError) {
-            txtSalida.append("🔧 Tabla de símbolos:\n\n");
-            txtSalida.append(String.format("%-10s %-12s %-12s %-10s\n", "ID", "MÉTODO", "PARÁMETRO", "VALOR"));
-            for (Simbolo s : tablaSimbolos) {
-                txtSalida.append(String.format("%-10s %-12s %-12d %-10d\n",
-                        s.getId(), s.getMetodo(), s.getParametro(), s.getValor()));
-            }
+        // Mostrar resultados
+        txtSalida.append(salidaLexico.toString());
+        txtSalida.append("\n");
+        txtSalida.append(salidaSintactico.toString());
+        txtSalida.append("\n");
+        txtSalida.append(salidaSemantico.toString());
+        txtSalida.append("\n");
+
+        txtSalida.append("🔧 Tabla de símbolos:\n\n");
+        txtSalida.append(String.format("%-10s %-12s %-12s %-10s\n", "ID", "MÉTODO", "PARÁMETRO", "VALOR"));
+        for (Simbolo s : tablaSimbolos) {
+            txtSalida.append(String.format("%-10s %-12s %-12d %-10d\n",
+                    s.getId(), s.getMetodo(), s.getParametro(), s.getValor()));
         }
+
+        txtSalida.append("\n📊 Tabla de Cuádruplos:\n\n");
+        txtSalida.append(String.format("%-5s %-10s %-12s %-12s %-10s\n", "Nº", "Operador", "Operando 1", "Operando 2", "Resultado"));
+        for (int j = 0; j < cuadruplos.size(); j++) {
+            Cuadruplo c = cuadruplos.get(j);
+            txtSalida.append(String.format("%-5d %-10s %-12s %-12s %-10s\n", j, c.getOperador(), c.getOperando1(), c.getOperando2(), c.getResultado()));
+        }
+        
+        String rutaASM = generarASMDesdeCuadruplos(cuadruplos); // genera y devuelve el path
+try {
+    compilarASMConDosbox(rutaASM);
+    ejecutarEnDosboxConRuta(rutaASM.replace(".asm", ".exe"));
+} catch (Exception e) {
+    JOptionPane.showMessageDialog(null, "❌ Error al compilar o ejecutar en DOSBox: " + e.getMessage());
+    e.printStackTrace();
+}
+
     }
 
+    private String generarASMDesdeCuadruplos(List<Cuadruplo> cuadruplos) {
+        StringBuilder asm = new StringBuilder();
+
+        asm.append(".MODEL SMALL\n")
+                .append(".STACK 100H\n")
+                .append(".DATA\n")
+                .append("PORTA  EQU 00H\n")
+                .append("PORTB  EQU 02H\n")
+                .append("PORTC  EQU 04H\n")
+                .append("Config EQU 06H\n")
+                .append(".CODE\n")
+                .append("  MOV AX, @DATA\n")
+                .append("  MOV DS, AX\n\n")
+                .append("  MOV DX, Config\n")
+                .append("  MOV AL, 10000000B\n")
+                .append("  OUT DX, AL\n\n");
+
+        Map<String, String> puertoPorMotor = Map.of(
+                "1", "PORTA",
+                "2", "PORTB",
+                "3", "PORTC"
+        );
+
+        int paso = 1;
+        for (Cuadruplo q : cuadruplos) {
+            String op = q.getOperador().toUpperCase();
+
+            switch (op) {
+                case "CALL":
+                    String id = q.getOperando1();
+                    String valor = q.getOperando2();
+                    String comando = q.getResultado();
+
+                    String num = id.replaceAll("[^0-9]", "");
+                    String puerto = puertoPorMotor.getOrDefault(num, "PORTA");
+
+                    asm.append("  ; === ").append(comando.toUpperCase()).append(" de ").append(id).append(" ===\n");
+                    asm.append("  MOV DX, ").append(puerto).append("\n");
+                    for (int i = 1; i <= 4; i++) {
+                        asm.append("  MOV AL, ").append(getSecuenciaPaso(i)).append(" ; Paso ").append(i).append("\n");
+                        asm.append("  OUT DX, AL\n");
+                        asm.append("  MOV CX, 0FFFFH\n");
+                        asm.append("delay").append(paso).append(":\n");
+                        asm.append("  LOOP delay").append(paso).append("\n");
+                        paso++;
+                    }
+                    asm.append("\n");
+                    break;
+                case "EXEC_LOOP":
+                    asm.append("  ; Bucle EXEC_LOOP omitido (puedes implementar)\n\n");
+                    break;
+                default:
+                    // Ignorar otros operadores en ASM
+                    break;
+            }
+        }
+
+        asm.append("  MOV AH, 4CH\n")
+                .append("  MOV AL, 0\n")
+                .append("  INT 21H\n")
+                .append("END\n");
+
+        String rutaASM = "C:\\Users\\carlo\\Downloads\\DOSBox2\\Tasm\\robot.asm";
+
+        try (BufferedWriter writer = new BufferedWriter(new FileWriter(rutaASM))) {
+            writer.write(asm.toString());
+            System.out.println("✅ Archivo ASM generado en: " + rutaASM);
+        } catch (IOException e) {
+            e.printStackTrace();
+            JOptionPane.showMessageDialog(null, "Error al guardar archivo .ASM: " + e.getMessage());
+        }
+
+        return rutaASM;
+    }
+
+    private String getSecuenciaPaso(int paso) {
+        return switch (paso) {
+            case 1 ->
+                "00000110B";
+            case 2 ->
+                "00001100B";
+            case 3 ->
+                "00001001B";
+            case 4 ->
+                "00000011B";
+            default ->
+                "00000000B";
+        };
+    }
+
+    private void compilarASMConDosbox(String rutaASM) throws IOException, InterruptedException {
+    String dosboxPath = "C:\\Users\\carlo\\Downloads\\DOSBox2\\dosbox.exe";
+    String rutaASMDir = "C:\\Users\\carlo\\Downloads\\DOSBox2\\Tasm";
+
+    String nombreASM = new File(rutaASM).getName();
+    String nombreSinExtension = nombreASM.replace(".asm", "");
+
+    // Comando DOSBox para ensamblar y linkear
+    ProcessBuilder pb = new ProcessBuilder(
+        dosboxPath,
+        "-c", "mount c \"" + rutaASMDir + "\"",
+        "-c", "c:",
+        "-c", "tasm " + nombreASM,
+        "-c", "tlink " + nombreSinExtension,
+        "-c", "exit"
+    );
+
+    pb.inheritIO(); // Para mostrar la salida de DOSBox en consola
+    Process proceso = pb.start();
+    proceso.waitFor();
+
+    System.out.println("✅ Compilación con DOSBox terminada.");
+}
+
+    private void ejecutarEnDosboxConRuta(String rutaEXE) throws IOException, InterruptedException {
+    String dosboxPath = "C:\\Users\\carlo\\Downloads\\DOSBox2\\dosbox.exe";
+    String directorio = "C:\\Users\\carlo\\Downloads\\DOSBox2\\Tasm";
+    String nombreExe = new File(rutaEXE).getName();
+
+   // Este comando ejecuta DOSBox con los pasos de compilación adentro
+ProcessBuilder pb = new ProcessBuilder(
+    "C:\\Users\\carlo\\Downloads\\DOSBox2\\dosbox.exe",
+    "-c", "mount c C:\\Users\\carlo\\Downloads\\DOSBox2\\Tasm",
+    "-c", "c:",
+    "-c", "tasm robot.asm",
+    "-c", "tlink robot.obj",
+    "-c", "robot",
+    "-c", "exit"
+);
+
+
+    pb.inheritIO(); // Ver en consola
+    Process proceso = pb.start();
+    proceso.waitFor();
+
+    System.out.println("✅ Ejecución del archivo .EXE en DOSBox terminada.");
+}
+
+  
+    
     private void pintarLineaRoja(JTextArea area, int numeroLinea) {
         try {
             int start = area.getLineStartOffset(numeroLinea);
@@ -529,19 +710,6 @@ public class AnalizadorLexico extends javax.swing.JFrame {
             Highlighter highlighter = area.getHighlighter();
             Highlighter.HighlightPainter painter = new DefaultHighlighter.DefaultHighlightPainter(Color.PINK);
             highlighter.addHighlight(start, end, painter);
-        } catch (BadLocationException e) {
-            e.printStackTrace();
-        }
-    }
-
-    private void pintarPrimeraLineaCon(String contenido) {
-        try {
-            String texto = txtEntrada.getText();
-            int index = texto.indexOf(contenido);
-            if (index >= 0) {
-                int linea = txtEntrada.getLineOfOffset(index);
-                pintarLineaRoja(txtEntrada, linea);
-            }
         } catch (BadLocationException e) {
             e.printStackTrace();
         }
