@@ -551,15 +551,15 @@ public class AnalizadorLexico extends javax.swing.JFrame {
             Cuadruplo c = cuadruplos.get(j);
             txtSalida.append(String.format("%-5d %-10s %-12s %-12s %-10s\n", j, c.getOperador(), c.getOperando1(), c.getOperando2(), c.getResultado()));
         }
-        
+
         String rutaASM = generarASMDesdeCuadruplos(cuadruplos); // genera y devuelve el path
-try {
-    compilarASMConDosbox(rutaASM);
-    ejecutarEnDosboxConRuta(rutaASM.replace(".asm", ".exe"));
-} catch (Exception e) {
-    JOptionPane.showMessageDialog(null, "❌ Error al compilar o ejecutar en DOSBox: " + e.getMessage());
-    e.printStackTrace();
-}
+        try {
+            compilarASMConDosbox(rutaASM);
+            ejecutarEnDosboxConRuta(rutaASM.replace(".asm", ".exe"));
+        } catch (Exception e) {
+            JOptionPane.showMessageDialog(null, "❌ Error al compilar o ejecutar en DOSBox: " + e.getMessage());
+            e.printStackTrace();
+        }
 
     }
 
@@ -590,17 +590,32 @@ try {
         for (Cuadruplo q : cuadruplos) {
             String op = q.getOperador().toUpperCase();
 
-            switch (op) {
-                case "CALL":
-                    String id = q.getOperando1();
-                    String valor = q.getOperando2();
-                    String comando = q.getResultado();
+            if (op.equals("CALL")) {
+                String id = q.getOperando1();
+                int valorInt = Integer.parseInt(q.getOperando2());
+                 String comando = q.getResultado();
+                int secuencias = calcularSecuencias(comando, valorInt);
 
-                    String num = id.replaceAll("[^0-9]", "");
-                    String puerto = puertoPorMotor.getOrDefault(num, "PORTA");
+               
 
-                    asm.append("  ; === ").append(comando.toUpperCase()).append(" de ").append(id).append(" ===\n");
-                    asm.append("  MOV DX, ").append(puerto).append("\n");
+                // Nuevo: asignar el puerto según el componente
+                String puerto = switch (comando.toLowerCase()) {
+                    case "base" ->
+                        "PORTA";
+                    case "hombro" ->
+                        "PORTB";
+                    case "codo" ->
+                        "PORTC";
+                    case "garra" ->
+                        "PORTA"; // o PORTB, PORTC si tienes más puertos disponibles
+                    default ->
+                        "PORTA";
+                };
+
+                asm.append("  ; === ").append(comando.toUpperCase()).append(" de ").append(id).append(" ===\n");
+                asm.append("  MOV DX, ").append(puerto).append("\n");
+
+                for (int s = 0; s < secuencias; s++) {
                     for (int i = 1; i <= 4; i++) {
                         asm.append("  MOV AL, ").append(getSecuenciaPaso(i)).append(" ; Paso ").append(i).append("\n");
                         asm.append("  OUT DX, AL\n");
@@ -609,14 +624,11 @@ try {
                         asm.append("  LOOP delay").append(paso).append("\n");
                         paso++;
                     }
-                    asm.append("\n");
-                    break;
-                case "EXEC_LOOP":
-                    asm.append("  ; Bucle EXEC_LOOP omitido (puedes implementar)\n\n");
-                    break;
-                default:
-                    // Ignorar otros operadores en ASM
-                    break;
+                }
+
+                asm.append("\n");
+            } else if (op.equals("EXEC_LOOP")) {
+                asm.append("  ; Bucle EXEC_LOOP omitido\n\n");
             }
         }
 
@@ -638,6 +650,19 @@ try {
         return rutaASM;
     }
 
+    private int calcularSecuencias(String componente, int valor) {
+        return switch (componente.toLowerCase()) {
+            case "base" ->
+                Math.max(1, valor / 12);     // 360° → ~30 secuencias
+            case "hombro", "codo" ->
+                Math.max(1, valor / 9);  // 180° → ~20 secuencias
+            case "garra" ->
+                Math.max(1, valor / 6);     // 90° → ~15 secuencias
+            default ->
+                1;
+        };
+    }
+
     private String getSecuenciaPaso(int paso) {
         return switch (paso) {
             case 1 ->
@@ -654,55 +679,52 @@ try {
     }
 
     private void compilarASMConDosbox(String rutaASM) throws IOException, InterruptedException {
-    String dosboxPath = "C:\\Users\\carlo\\Downloads\\DOSBox2\\dosbox.exe";
-    String rutaASMDir = "C:\\Users\\carlo\\Downloads\\DOSBox2\\Tasm";
+        String dosboxPath = "C:\\Users\\carlo\\Downloads\\DOSBox2\\dosbox.exe";
+        String rutaASMDir = "C:\\Users\\carlo\\Downloads\\DOSBox2\\Tasm";
 
-    String nombreASM = new File(rutaASM).getName();
-    String nombreSinExtension = nombreASM.replace(".asm", "");
+        String nombreASM = new File(rutaASM).getName();
+        String nombreSinExtension = nombreASM.replace(".asm", "");
 
-    // Comando DOSBox para ensamblar y linkear
-    ProcessBuilder pb = new ProcessBuilder(
-        dosboxPath,
-        "-c", "mount c \"" + rutaASMDir + "\"",
-        "-c", "c:",
-        "-c", "tasm " + nombreASM,
-        "-c", "tlink " + nombreSinExtension,
-        "-c", "exit"
-    );
+        // Comando DOSBox para ensamblar y linkear
+        ProcessBuilder pb = new ProcessBuilder(
+                dosboxPath,
+                "-c", "mount c \"" + rutaASMDir + "\"",
+                "-c", "c:",
+                "-c", "tasm " + nombreASM,
+                "-c", "tlink " + nombreSinExtension,
+                "-c", "exit"
+        );
 
-    pb.inheritIO(); // Para mostrar la salida de DOSBox en consola
-    Process proceso = pb.start();
-    proceso.waitFor();
+        pb.inheritIO(); // Para mostrar la salida de DOSBox en consola
+        Process proceso = pb.start();
+        proceso.waitFor();
 
-    System.out.println("✅ Compilación con DOSBox terminada.");
-}
+        System.out.println("✅ Compilación con DOSBox terminada.");
+    }
 
     private void ejecutarEnDosboxConRuta(String rutaEXE) throws IOException, InterruptedException {
-    String dosboxPath = "C:\\Users\\carlo\\Downloads\\DOSBox2\\dosbox.exe";
-    String directorio = "C:\\Users\\carlo\\Downloads\\DOSBox2\\Tasm";
-    String nombreExe = new File(rutaEXE).getName();
+        String dosboxPath = "C:\\Users\\carlo\\Downloads\\DOSBox2\\dosbox.exe";
+        String directorio = "C:\\Users\\carlo\\Downloads\\DOSBox2\\Tasm";
+        String nombreExe = new File(rutaEXE).getName();
 
-   // Este comando ejecuta DOSBox con los pasos de compilación adentro
-ProcessBuilder pb = new ProcessBuilder(
-    "C:\\Users\\carlo\\Downloads\\DOSBox2\\dosbox.exe",
-    "-c", "mount c C:\\Users\\carlo\\Downloads\\DOSBox2\\Tasm",
-    "-c", "c:",
-    "-c", "tasm robot.asm",
-    "-c", "tlink robot.obj",
-    "-c", "robot",
-    "-c", "exit"
-);
+        // Este comando ejecuta DOSBox con los pasos de compilación adentro
+        ProcessBuilder pb = new ProcessBuilder(
+                "C:\\Users\\carlo\\Downloads\\DOSBox2\\dosbox.exe",
+                "-c", "mount c C:\\Users\\carlo\\Downloads\\DOSBox2\\Tasm",
+                "-c", "c:",
+                "-c", "tasm robot.asm",
+                "-c", "tlink robot.obj",
+                "-c", "robot",
+                "-c", "exit"
+        );
 
+        pb.inheritIO(); // Ver en consola
+        Process proceso = pb.start();
+        proceso.waitFor();
 
-    pb.inheritIO(); // Ver en consola
-    Process proceso = pb.start();
-    proceso.waitFor();
+        System.out.println("✅ Ejecución del archivo .EXE en DOSBox terminada.");
+    }
 
-    System.out.println("✅ Ejecución del archivo .EXE en DOSBox terminada.");
-}
-
-  
-    
     private void pintarLineaRoja(JTextArea area, int numeroLinea) {
         try {
             int start = area.getLineStartOffset(numeroLinea);
