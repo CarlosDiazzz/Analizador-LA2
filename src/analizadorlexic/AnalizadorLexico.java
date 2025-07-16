@@ -573,116 +573,117 @@ public class AnalizadorLexico extends javax.swing.JFrame {
     }
 
     private String generarASMDesdeCuadruplos(List<Cuadruplo> cuadruplos) {
-        StringBuilder asm = new StringBuilder();
-        Map<String, Integer> temporales = new HashMap<>();
+    StringBuilder asm = new StringBuilder();
+    Map<String, Integer> temporales = new HashMap<>();
+    Map<String, Integer> posicionActual = new HashMap<>();
 
+    asm.append(".MODEL SMALL\n")
+        .append(".STACK 100H\n")
+        .append(".DATA\n")
+        .append("PORTA EQU 00H\n")
+        .append("PORTB EQU 02H\n")
+        .append("PORTC EQU 04H\n")
+        .append("Config EQU 06H\n")
+        .append(".CODE\n")
+        .append("MOV AX, @DATA\n")
+        .append("MOV DS, AX\n\n")
+        .append("MOV DX, Config\n")
+        .append("MOV AL, 10000000B\n")
+        .append("OUT DX, AL\n\n");
 
-        asm.append(".MODEL SMALL\n")
-                .append(".STACK 100H\n")
-                .append(".DATA\n")
-                .append("PORTA EQU 00H\n")
-                .append("PORTB EQU 02H\n")
-                .append("PORTC EQU 04H\n")
-                .append("Config EQU 06H\n")
-                .append(".CODE\n")
-                .append("MOV AX, @DATA\n")
-                .append("MOV DS, AX\n\n")
-                .append("MOV DX, Config\n")
-                .append("MOV AL, 10000000B\n")
-                .append("OUT DX, AL\n\n");
+    int pasoContador = 1;
+    int velocidadActual = 1;
 
-        int paso = 1;
-        int velocidadActual = 1; // empieza lento (valor bajo = rápido si invertimos)
+    for (Cuadruplo q : cuadruplos) {
+        String op = q.getOperador().toUpperCase();
 
-        for (Cuadruplo q : cuadruplos) {
-            String op = q.getOperador().toUpperCase();
+        if (op.equals("=") && q.getResultado().startsWith("vel")) {
+            try {
+                int vel = Integer.parseInt(q.getOperando1());
+                temporales.put(q.getResultado(), vel);
+            } catch (NumberFormatException ignored) {}
+        }
 
-            if (op.equals("=") && q.getResultado().startsWith("vel")) {
-                try {
-                    int vel = Integer.parseInt(q.getOperando1());
-                    temporales.put(q.getResultado(), vel);
-                } catch (NumberFormatException ignored) {
-                }
-            }
-
-            if (op.equals("ASSOC") && q.getResultado().endsWith(".velocidad")) {
-                String variable = q.getOperando1();
-                if (temporales.containsKey(variable)) {
-                    velocidadActual = temporales.get(variable);
-                } else {
-                    velocidadActual = 10; // por defecto
-                }
-            }
-
-            if (op.equals("CALL")) {
-                String id = q.getOperando1();
-                int valor = Integer.parseInt(q.getOperando2());
-                String componente = q.getResultado();
-
-                int secuencias = calcularSecuencias(componente, valor);
-
-                String puerto = switch (componente.toLowerCase()) {
-                    case "base" ->
-                        "PORTA";
-                    case "hombro" ->
-                        "PORTB";
-                    case "codo" ->
-                        "PORTC";
-                    case "garra" ->
-                        "PORTA";
-                    default ->
-                        "PORTA";
-                };
-
-                int delay = Math.max(1, 61 - velocidadActual) * 200;
-
-                asm.append("  ; ").append(componente.toUpperCase()).append(" de ").append(id).append("\n");
-                asm.append("  ; Velocidad = ").append(velocidadActual).append(", Delay = ").append(delay).append("\n");
-                asm.append("  MOV DX, ").append(puerto).append("\n");
-
-                for (int s = 0; s < secuencias; s++) {
-                    for (int i = 1; i <= 4; i++) {
-                        asm.append("  MOV AL, ").append(getSecuenciaPaso(i)).append("\n");
-                        asm.append("  OUT DX, AL\n");
-                        asm.append("delay").append(paso).append(":\n");
-                        asm.append("  MOV CX, ").append(delay).append("\n");
-                        asm.append("espera").append(paso).append(":\n");
-                        asm.append("  DEC CX\n");
-                        asm.append("  JNZ espera").append(paso).append("\n");
-                        paso++;
-                    }
-                }
-
-                asm.append("\n");
+        if (op.equals("ASSOC") && q.getResultado().endsWith(".velocidad")) {
+            String variable = q.getOperando1();
+            if (temporales.containsKey(variable)) {
+                velocidadActual = temporales.get(variable);
+            } else {
+                velocidadActual = 10;
             }
         }
 
-        asm.append("MOV AH, 4CH\nINT 21H\nEND\n");
+        if (op.equals("CALL")) {
+            String id = q.getOperando1();
+            int valor = Integer.parseInt(q.getOperando2());
+            String componente = q.getResultado();
 
-        String rutaASM = "C:\\Users\\carlo\\Downloads\\DOSBox2\\Tasm\\robot.asm";
+            String clave = id + "." + componente;
+            int actual = posicionActual.getOrDefault(clave, 0);
 
-        try (BufferedWriter writer = new BufferedWriter(new FileWriter(rutaASM))) {
-            writer.write(asm.toString());
-            System.out.println("✅ Archivo ASM generado en: " + rutaASM);
-        } catch (IOException e) {
-            e.printStackTrace();
-            JOptionPane.showMessageDialog(null, "Error al guardar archivo .ASM: " + e.getMessage());
+            int diferencia = valor - actual;
+            boolean sentidoHorario = diferencia >= 0;
+            int gradosAbsolutos = Math.abs(diferencia);
+
+            int secuencias = calcularSecuencias(componente, gradosAbsolutos);
+
+            String puerto = switch (componente.toLowerCase()) {
+                case "base" -> "PORTA";
+                case "hombro" -> "PORTB";
+                case "codo" -> "PORTC";
+                case "garra" -> "PORTA";
+                default -> "PORTA";
+            };
+
+            int delay = Math.max(1, 61 - velocidadActual) * 200;
+
+            asm.append("  ; ").append(componente.toUpperCase()).append(" de ").append(id).append("\n");
+            asm.append("  ; Ir de ").append(actual).append("° a ").append(valor).append("°, sentido: ")
+               .append(sentidoHorario ? "Horario" : "Antihorario").append("\n");
+            asm.append("  MOV DX, ").append(puerto).append("\n");
+
+            for (int s = 0; s < secuencias; s++) {
+                for (int i = 1; i <= 4; i++) {
+                    int paso = sentidoHorario ? i : (5 - i);  // Invertir pasos si antihorario
+                    asm.append("  MOV AL, ").append(getSecuenciaPaso(paso)).append("\n");
+                    asm.append("  OUT DX, AL\n");
+                    asm.append("delay").append(pasoContador).append(":\n");
+                    asm.append("  MOV CX, ").append(delay).append("\n");
+                    asm.append("espera").append(pasoContador).append(":\n");
+                    asm.append("  DEC CX\n");
+                    asm.append("  JNZ espera").append(pasoContador).append("\n");
+                    pasoContador++;
+                }
+            }
+
+            asm.append("\n");
+
+            // Actualiza la posición
+            posicionActual.put(clave, valor);
         }
-
-        return rutaASM;
     }
 
-   private int calcularSecuencias(String componente, int valor) {
-    double gradosPorPaso = switch (componente.toLowerCase()) {
-        case "base" -> 3.75;     // 360° / 96 pasos (puedes ajustar esto según tu motor)
-        case "hombro", "codo" -> 3.75;
-        case "garra" -> 3.75;
-        default -> 3.75;
-    };
+    asm.append("MOV AH, 4CH\nINT 21H\nEND\n");
 
-    return Math.max(1, (int) Math.round(valor / gradosPorPaso));
+    String rutaASM = "C:\\Users\\carlo\\Downloads\\DOSBox2\\Tasm\\robot.asm";
+
+    try (BufferedWriter writer = new BufferedWriter(new FileWriter(rutaASM))) {
+        writer.write(asm.toString());
+        System.out.println("✅ Archivo ASM generado en: " + rutaASM);
+    } catch (IOException e) {
+        e.printStackTrace();
+        JOptionPane.showMessageDialog(null, "Error al guardar archivo .ASM: " + e.getMessage());
+    }
+
+    return rutaASM;
 }
 
+   private int calcularSecuencias(String componente, int valor) {
+    double gradosPorPasoElectrico = 0.88; // Paso individual (de 1 a 4)
+    double gradosPorSecuencia = gradosPorPasoElectrico * 4; // Cada ciclo completo = 4 pasos
+
+    return Math.max(1, (int) Math.round(valor / gradosPorSecuencia));
+}
 
     private String getSecuenciaPaso(int paso) {
         return switch (paso) {
@@ -866,6 +867,8 @@ public class AnalizadorLexico extends javax.swing.JFrame {
             i += 3;
         }
     }
+
+    
 
 
     // Variables declaration - do not modify//GEN-BEGIN:variables
