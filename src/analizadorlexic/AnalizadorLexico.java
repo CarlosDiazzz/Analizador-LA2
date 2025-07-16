@@ -17,6 +17,7 @@ import java.io.FileWriter;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -573,6 +574,8 @@ public class AnalizadorLexico extends javax.swing.JFrame {
 
     private String generarASMDesdeCuadruplos(List<Cuadruplo> cuadruplos) {
         StringBuilder asm = new StringBuilder();
+        Map<String, Integer> temporales = new HashMap<>();
+
 
         asm.append(".MODEL SMALL\n")
                 .append(".STACK 100H\n")
@@ -594,80 +597,63 @@ public class AnalizadorLexico extends javax.swing.JFrame {
         for (Cuadruplo q : cuadruplos) {
             String op = q.getOperador().toUpperCase();
 
+            if (op.equals("=") && q.getResultado().startsWith("vel")) {
+                try {
+                    int vel = Integer.parseInt(q.getOperando1());
+                    temporales.put(q.getResultado(), vel);
+                } catch (NumberFormatException ignored) {
+                }
+            }
+
+            if (op.equals("ASSOC") && q.getResultado().endsWith(".velocidad")) {
+                String variable = q.getOperando1();
+                if (temporales.containsKey(variable)) {
+                    velocidadActual = temporales.get(variable);
+                } else {
+                    velocidadActual = 10; // por defecto
+                }
+            }
+
             if (op.equals("CALL")) {
                 String id = q.getOperando1();
-                String componente = q.getResultado().toLowerCase();
-                int destino = Integer.parseInt(q.getOperando2());
+                int valor = Integer.parseInt(q.getOperando2());
+                String componente = q.getResultado();
 
-                int actual = tablaSimbolos.stream()
-                        .filter(s -> s.getId().equalsIgnoreCase(id) && s.getMetodo().equalsIgnoreCase(componente))
-                        .map(Simbolo::getValor)
-                        .findFirst()
-                        .orElse(0);
+                int secuencias = calcularSecuencias(componente, valor);
 
-                // Gira de actual → destino, en sentido positivo (diferencia directa)
-                int diferencia = destino - actual;
-                if (diferencia < 0) {
-                    diferencia += 360;
-                }
-
-                int pasos = switch (componente) {
+                String puerto = switch (componente.toLowerCase()) {
                     case "base" ->
-                        Math.round(diferencia * (200.0f / 360.0f));
-                    case "hombro", "codo" ->
-                        Math.round(diferencia * (100.0f / 180.0f));
-                    case "garra" ->
-                        Math.round(diferencia * (50.0f / 90.0f));
-                    default ->
-                        0;
-                };
-
-                if (pasos == 0) {
-                    continue;
-                }
-
-                String puerto = switch (componente) {
-                    case "base", "garra" ->
                         "PORTA";
                     case "hombro" ->
                         "PORTB";
                     case "codo" ->
                         "PORTC";
+                    case "garra" ->
+                        "PORTA";
                     default ->
                         "PORTA";
                 };
 
-                // Invertimos la lógica: velocidad 1 = rápido, 60 = lento
-                // delay = Math.max(10, velocidadActual * 30);
-                int delay = Math.max(300, (61 - velocidadActual) * 30);
+                int delay = Math.max(1, 61 - velocidadActual) * 200;
 
-                asm.append("; ").append(id).append(".").append(componente)
-                        .append(" de ").append(actual).append("° a ").append(destino).append("° → ")
-                        .append(pasos).append(" pasos, velocidad ").append(velocidadActual).append("\n");
+                asm.append("  ; ").append(componente.toUpperCase()).append(" de ").append(id).append("\n");
+                asm.append("  ; Velocidad = ").append(velocidadActual).append(", Delay = ").append(delay).append("\n");
+                asm.append("  MOV DX, ").append(puerto).append("\n");
 
-                asm.append("MOV DX, ").append(puerto).append("\n");
-
-                for (int s = 0; s < pasos; s++) {
+                for (int s = 0; s < secuencias; s++) {
                     for (int i = 1; i <= 4; i++) {
-                        asm.append("MOV AL, ").append(getSecuenciaPaso(i)).append("\n");
-                        asm.append("OUT DX, AL\n");
+                        asm.append("  MOV AL, ").append(getSecuenciaPaso(i)).append("\n");
+                        asm.append("  OUT DX, AL\n");
                         asm.append("delay").append(paso).append(":\n");
-                        asm.append("MOV CX, ").append(delay).append("\n");
+                        asm.append("  MOV CX, ").append(delay).append("\n");
                         asm.append("espera").append(paso).append(":\n");
-                        asm.append("DEC CX\n");
-                        asm.append("JNZ espera").append(paso).append("\n");
+                        asm.append("  DEC CX\n");
+                        asm.append("  JNZ espera").append(paso).append("\n");
                         paso++;
                     }
                 }
 
-                asm.append("MOV AL, 00000000B\nOUT DX, AL\n\n");
-
-            } else if (op.equals("ASSOC") && q.getResultado().endsWith(".velocidad")) {
-                try {
-                    velocidadActual = Integer.parseInt(q.getOperando1());
-                } catch (NumberFormatException e) {
-                    velocidadActual = 10; // Valor por defecto
-                }
+                asm.append("\n");
             }
         }
 
@@ -686,18 +672,17 @@ public class AnalizadorLexico extends javax.swing.JFrame {
         return rutaASM;
     }
 
-    private int calcularSecuencias(String componente, int valor) {
-        return switch (componente.toLowerCase()) {
-            case "base" ->
-                Math.max(1, valor / 12);     // 360° → ~30 secuencias
-            case "hombro", "codo" ->
-                Math.max(1, valor / 9);  // 180° → ~20 secuencias
-            case "garra" ->
-                Math.max(1, valor / 6);     // 90° → ~15 secuencias
-            default ->
-                1;
-        };
-    }
+   private int calcularSecuencias(String componente, int valor) {
+    double gradosPorPaso = switch (componente.toLowerCase()) {
+        case "base" -> 3.75;     // 360° / 96 pasos (puedes ajustar esto según tu motor)
+        case "hombro", "codo" -> 3.75;
+        case "garra" -> 3.75;
+        default -> 3.75;
+    };
+
+    return Math.max(1, (int) Math.round(valor / gradosPorPaso));
+}
+
 
     private String getSecuenciaPaso(int paso) {
         return switch (paso) {
