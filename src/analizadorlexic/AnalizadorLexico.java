@@ -589,70 +589,91 @@ public class AnalizadorLexico extends javax.swing.JFrame {
                 .append("OUT DX, AL\n\n");
 
         int paso = 1;
-        int velocidadActual = 10;
+        int velocidadActual = 1; // empieza lento (valor bajo = rápido si invertimos)
 
         for (Cuadruplo q : cuadruplos) {
             String op = q.getOperador().toUpperCase();
 
             if (op.equals("CALL")) {
                 String id = q.getOperando1();
-                int valor = Integer.parseInt(q.getOperando2());
-                String componente = q.getResultado();
-                int secuencias = calcularSecuencias(componente, valor);
+                String componente = q.getResultado().toLowerCase();
+                int destino = Integer.parseInt(q.getOperando2());
 
-                String puerto = switch (componente.toLowerCase()) {
+                int actual = tablaSimbolos.stream()
+                        .filter(s -> s.getId().equalsIgnoreCase(id) && s.getMetodo().equalsIgnoreCase(componente))
+                        .map(Simbolo::getValor)
+                        .findFirst()
+                        .orElse(0);
+
+                // Gira de actual → destino, en sentido positivo (diferencia directa)
+                int diferencia = destino - actual;
+                if (diferencia < 0) {
+                    diferencia += 360;
+                }
+
+                int pasos = switch (componente) {
                     case "base" ->
+                        Math.round(diferencia * (200.0f / 360.0f));
+                    case "hombro", "codo" ->
+                        Math.round(diferencia * (100.0f / 180.0f));
+                    case "garra" ->
+                        Math.round(diferencia * (50.0f / 90.0f));
+                    default ->
+                        0;
+                };
+
+                if (pasos == 0) {
+                    continue;
+                }
+
+                String puerto = switch (componente) {
+                    case "base", "garra" ->
                         "PORTA";
                     case "hombro" ->
                         "PORTB";
                     case "codo" ->
                         "PORTC";
-                    case "garra" ->
-                        "PORTA";
                     default ->
                         "PORTA";
                 };
 
-                asm.append("  ; ").append(componente.toUpperCase()).append(" de ").append(id).append("\n");
-                asm.append("  MOV DX, ").append(puerto).append("\n");
+                // Invertimos la lógica: velocidad 1 = rápido, 60 = lento
+                // delay = Math.max(10, velocidadActual * 30);
+                int delay = Math.max(300, (61 - velocidadActual) * 30);
 
-                // Calcular delay inversamente proporcional a la velocidad
-                int delay = Math.max(1, 61 - velocidadActual) * 200;
+                asm.append("; ").append(id).append(".").append(componente)
+                        .append(" de ").append(actual).append("° a ").append(destino).append("° → ")
+                        .append(pasos).append(" pasos, velocidad ").append(velocidadActual).append("\n");
 
-                for (int s = 0; s < secuencias; s++) {
+                asm.append("MOV DX, ").append(puerto).append("\n");
+
+                for (int s = 0; s < pasos; s++) {
                     for (int i = 1; i <= 4; i++) {
-                        asm.append("  MOV AL, ").append(getSecuenciaPaso(i)).append("\n");
-                        asm.append("  OUT DX, AL\n");
+                        asm.append("MOV AL, ").append(getSecuenciaPaso(i)).append("\n");
+                        asm.append("OUT DX, AL\n");
                         asm.append("delay").append(paso).append(":\n");
-                        asm.append("  MOV CX, ").append(delay).append("\n");
+                        asm.append("MOV CX, ").append(delay).append("\n");
                         asm.append("espera").append(paso).append(":\n");
-                        asm.append("  DEC CX\n");
-                        asm.append("  JNZ espera").append(paso).append("\n");
-
+                        asm.append("DEC CX\n");
+                        asm.append("JNZ espera").append(paso).append("\n");
                         paso++;
                     }
                 }
 
-                asm.append("\n");
+                asm.append("MOV AL, 00000000B\nOUT DX, AL\n\n");
 
-            } else if (op.equals("=") && q.getResultado().startsWith("vel")) {
+            } else if (op.equals("ASSOC") && q.getResultado().endsWith(".velocidad")) {
                 try {
                     velocidadActual = Integer.parseInt(q.getOperando1());
                 } catch (NumberFormatException e) {
-                    velocidadActual = 10;
+                    velocidadActual = 10; // Valor por defecto
                 }
-
-            } else if (op.equals("EXEC_LOOP")) {
-                // Ya ejecutado en tiempo de análisis
-                asm.append("  ; BLOQUE REPETIDO MANUALMENTE EN CUADRUPLOS\n\n");
             }
         }
 
-        asm.append("  MOV AH, 4CH\n")
-                .append("  INT 21H\n")
-                .append("END\n");
+        asm.append("MOV AH, 4CH\nINT 21H\nEND\n");
 
-        String rutaASM = "C:\\\\Users\\\\carlo\\\\Downloads\\\\DOSBox2\\\\Tasm\\\\robot.asm";
+        String rutaASM = "C:\\Users\\carlo\\Downloads\\DOSBox2\\Tasm\\robot.asm";
 
         try (BufferedWriter writer = new BufferedWriter(new FileWriter(rutaASM))) {
             writer.write(asm.toString());
