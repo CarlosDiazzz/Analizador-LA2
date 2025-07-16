@@ -17,7 +17,6 @@ import java.io.FileWriter;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -43,8 +42,6 @@ public class AnalizadorLexico extends javax.swing.JFrame {
     private List<Simbolo> tablaSimbolos = new ArrayList<>();
     List<Cuadruplo> cuadruplos = new ArrayList<>();
     int contadorCuadruplos = 0;
-    int contadorTemporales = 0;
-    int contadorLoops = 0;
 
     /**
      * Creates new form AnalizadorLexico
@@ -552,13 +549,24 @@ public class AnalizadorLexico extends javax.swing.JFrame {
             txtSalida.append(String.format("%-5d %-10s %-12s %-12s %-10s\n", j, c.getOperador(), c.getOperando1(), c.getOperando2(), c.getResultado()));
         }
 
-        String rutaASM = generarASMDesdeCuadruplos(cuadruplos); // genera y devuelve el path
-        try {
-            compilarASMConDosbox(rutaASM);
-            ejecutarEnDosboxConRuta(rutaASM.replace(".asm", ".exe"));
-        } catch (Exception e) {
-            JOptionPane.showMessageDialog(null, "❌ Error al compilar o ejecutar en DOSBox: " + e.getMessage());
-            e.printStackTrace();
+        int opcion = JOptionPane.showConfirmDialog(
+                this,
+                "¿Deseas generar el archivo .ASM y ejecutar en DOSBox?",
+                "Generación y Ejecución",
+                JOptionPane.YES_NO_OPTION
+        );
+
+        if (opcion == JOptionPane.YES_OPTION) {
+            String rutaASM = generarASMDesdeCuadruplos(cuadruplos);
+            try {
+                compilarASMConDosbox(rutaASM);
+                ejecutarEnDosboxConRuta(rutaASM.replace(".asm", ".exe"));
+            } catch (Exception e) {
+                JOptionPane.showMessageDialog(null, "❌ Error al compilar o ejecutar en DOSBox: " + e.getMessage());
+                e.printStackTrace();
+            }
+        } else {
+            JOptionPane.showMessageDialog(this, "✔ Análisis completo. No se generó archivo ASM ni se ejecutó.");
         }
 
     }
@@ -569,37 +577,30 @@ public class AnalizadorLexico extends javax.swing.JFrame {
         asm.append(".MODEL SMALL\n")
                 .append(".STACK 100H\n")
                 .append(".DATA\n")
-                .append("PORTA  EQU 00H\n")
-                .append("PORTB  EQU 02H\n")
-                .append("PORTC  EQU 04H\n")
+                .append("PORTA EQU 00H\n")
+                .append("PORTB EQU 02H\n")
+                .append("PORTC EQU 04H\n")
                 .append("Config EQU 06H\n")
                 .append(".CODE\n")
-                .append("  MOV AX, @DATA\n")
-                .append("  MOV DS, AX\n\n")
-                .append("  MOV DX, Config\n")
-                .append("  MOV AL, 10000000B\n")
-                .append("  OUT DX, AL\n\n");
-
-        Map<String, String> puertoPorMotor = Map.of(
-                "1", "PORTA",
-                "2", "PORTB",
-                "3", "PORTC"
-        );
+                .append("MOV AX, @DATA\n")
+                .append("MOV DS, AX\n\n")
+                .append("MOV DX, Config\n")
+                .append("MOV AL, 10000000B\n")
+                .append("OUT DX, AL\n\n");
 
         int paso = 1;
+        int velocidadActual = 10;
+
         for (Cuadruplo q : cuadruplos) {
             String op = q.getOperador().toUpperCase();
 
             if (op.equals("CALL")) {
                 String id = q.getOperando1();
-                int valorInt = Integer.parseInt(q.getOperando2());
-                 String comando = q.getResultado();
-                int secuencias = calcularSecuencias(comando, valorInt);
+                int valor = Integer.parseInt(q.getOperando2());
+                String componente = q.getResultado();
+                int secuencias = calcularSecuencias(componente, valor);
 
-               
-
-                // Nuevo: asignar el puerto según el componente
-                String puerto = switch (comando.toLowerCase()) {
+                String puerto = switch (componente.toLowerCase()) {
                     case "base" ->
                         "PORTA";
                     case "hombro" ->
@@ -607,37 +608,51 @@ public class AnalizadorLexico extends javax.swing.JFrame {
                     case "codo" ->
                         "PORTC";
                     case "garra" ->
-                        "PORTA"; // o PORTB, PORTC si tienes más puertos disponibles
+                        "PORTA";
                     default ->
                         "PORTA";
                 };
 
-                asm.append("  ; === ").append(comando.toUpperCase()).append(" de ").append(id).append(" ===\n");
+                asm.append("  ; ").append(componente.toUpperCase()).append(" de ").append(id).append("\n");
                 asm.append("  MOV DX, ").append(puerto).append("\n");
+
+                // Calcular delay inversamente proporcional a la velocidad
+                int delay = Math.max(1, 61 - velocidadActual) * 200;
 
                 for (int s = 0; s < secuencias; s++) {
                     for (int i = 1; i <= 4; i++) {
-                        asm.append("  MOV AL, ").append(getSecuenciaPaso(i)).append(" ; Paso ").append(i).append("\n");
+                        asm.append("  MOV AL, ").append(getSecuenciaPaso(i)).append("\n");
                         asm.append("  OUT DX, AL\n");
-                        asm.append("  MOV CX, 0FFFFH\n");
                         asm.append("delay").append(paso).append(":\n");
-                        asm.append("  LOOP delay").append(paso).append("\n");
+                        asm.append("  MOV CX, ").append(delay).append("\n");
+                        asm.append("espera").append(paso).append(":\n");
+                        asm.append("  DEC CX\n");
+                        asm.append("  JNZ espera").append(paso).append("\n");
+
                         paso++;
                     }
                 }
 
                 asm.append("\n");
+
+            } else if (op.equals("=") && q.getResultado().startsWith("vel")) {
+                try {
+                    velocidadActual = Integer.parseInt(q.getOperando1());
+                } catch (NumberFormatException e) {
+                    velocidadActual = 10;
+                }
+
             } else if (op.equals("EXEC_LOOP")) {
-                asm.append("  ; Bucle EXEC_LOOP omitido\n\n");
+                // Ya ejecutado en tiempo de análisis
+                asm.append("  ; BLOQUE REPETIDO MANUALMENTE EN CUADRUPLOS\n\n");
             }
         }
 
         asm.append("  MOV AH, 4CH\n")
-                .append("  MOV AL, 0\n")
                 .append("  INT 21H\n")
                 .append("END\n");
 
-        String rutaASM = "C:\\Users\\carlo\\Downloads\\DOSBox2\\Tasm\\robot.asm";
+        String rutaASM = "C:\\\\Users\\\\carlo\\\\Downloads\\\\DOSBox2\\\\Tasm\\\\robot.asm";
 
         try (BufferedWriter writer = new BufferedWriter(new FileWriter(rutaASM))) {
             writer.write(asm.toString());
@@ -763,22 +778,24 @@ public class AnalizadorLexico extends javax.swing.JFrame {
 
         int i = 0;
         while (i < palabras.length) {
-            String full = palabras[i];
             if (i + 2 >= palabras.length) {
                 break;
             }
 
+            String full = palabras[i];
             String[] partes = full.split("\\.");
             if (partes.length != 2) {
                 break;
             }
 
             String id = partes[0];
-            String comb = partes[1];
+            String comando = partes[1];
             String operador = palabras[i + 1];
             String valor = palabras[i + 2];
 
+            // Validaciones básicas
             if (!operador.equals("=") || !patronValor.matcher(valor).matches()) {
+                lanzarErrorLinea("Expresión inválida en bloque", full);
                 break;
             }
 
@@ -791,69 +808,59 @@ public class AnalizadorLexico extends javax.swing.JFrame {
                 continue;
             }
 
-            if (!comandos.contains(comb.toLowerCase())) {
-                lanzarErrorLinea("Comando inválido: " + comb, comb);
-                tokens.add(new Token("ERROR", comb));
+            if (!comandos.contains(comando.toLowerCase())) {
+                lanzarErrorLinea("Comando inválido en bloque: " + comando, comando);
+                tokens.add(new Token("ERROR", comando));
                 i += 3;
                 continue;
             }
 
-            if (comb.equalsIgnoreCase("velocidad")) {
-                if (valorNumerico < 0 || valorNumerico > 10) {
-                    lanzarErrorLinea("Velocidad fuera de rango (0-10 segundos): " + valor, valor);
-                    tokens.add(new Token("ERROR", valor));
-                    i += 3;
-                    continue;
-                }
+            // Validaciones por comando
+            boolean valido = switch (comando.toLowerCase()) {
+                case "base" ->
+                    valorNumerico >= 0 && valorNumerico <= 360;
+                case "hombro", "codo" ->
+                    valorNumerico >= 0 && valorNumerico <= 180;
+                case "garra" ->
+                    valorNumerico >= 0 && valorNumerico <= 90;
+                case "velocidad" ->
+                    valorNumerico >= 1 && valorNumerico <= 60;
+                default ->
+                    false;
+            };
 
-                tablaSimbolos.removeIf(s -> s.getId().equalsIgnoreCase(id) && s.getMetodo().equalsIgnoreCase("velocidad"));
-                tablaSimbolos.add(new Simbolo(id, "velocidad", 1, valorNumerico));
-            } else {
-                boolean valorValido = switch (comb.toLowerCase()) {
-                    case "base" ->
-                        valorNumerico >= 0 && valorNumerico <= 360;
-                    case "hombro", "codo" ->
-                        valorNumerico >= 0 && valorNumerico <= 180;
-                    case "garra" ->
-                        valorNumerico >= 0 && valorNumerico <= 90;
-                    default ->
-                        false;
-                };
-
-                if (!valorValido) {
-                    lanzarErrorLinea("Valor fuera de rango para " + comb + ": " + valor, valor);
-                    tokens.add(new Token("ERROR", valor));
-                    i += 3;
-                    continue;
-                }
-
-                tablaSimbolos.removeIf(s -> s.getId().equalsIgnoreCase(id) && s.getMetodo().equalsIgnoreCase(comb));
-                tablaSimbolos.add(new Simbolo(id, comb, 1, valorNumerico));
+            if (!valido) {
+                lanzarErrorLinea("Valor fuera de rango para " + comando + ": " + valor, valor);
+                tokens.add(new Token("ERROR", valor));
+                i += 3;
+                continue;
             }
 
+            // Guardar en tabla de símbolos
+            tablaSimbolos.removeIf(s -> s.getId().equalsIgnoreCase(id) && s.getMetodo().equalsIgnoreCase(comando));
+            tablaSimbolos.add(new Simbolo(id, comando, 1, valorNumerico));
+
+            // Generar cuádruplos
+            if (comando.equalsIgnoreCase("velocidad")) {
+                String tempVel = "vel" + (contadorCuadruplos++);
+                cuadruplos.add(new Cuadruplo("CREATE", id, "—", tempVel));
+                cuadruplos.add(new Cuadruplo("=", valor, "—", tempVel));
+                cuadruplos.add(new Cuadruplo("ASSOC", tempVel, "—", id + ".velocidad"));
+            } else {
+                cuadruplos.add(new Cuadruplo("CALL", id, valor, comando));
+            }
+
+            // Agregar tokens para seguimiento (opcional)
             tokens.add(new Token("IDENTIFICADOR", id));
             tokens.add(new Token("OPERADOR", "."));
-            tokens.add(new Token("COMANDO", comb));
+            tokens.add(new Token("COMANDO", comando));
             tokens.add(new Token("OPERADOR", "="));
             tokens.add(new Token("NUMERO", valor));
-
-            // Aplicar pausa si hay velocidad
-            Optional<Simbolo> velocidad = tablaSimbolos.stream()
-                    .filter(s -> s.getId().equalsIgnoreCase(id) && s.getMetodo().equalsIgnoreCase("velocidad"))
-                    .findFirst();
-
-            if (velocidad.isPresent()) {
-                int ms = velocidad.get().getValor() * 1;
-                try {
-                    Thread.sleep(ms);
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                }
-            }
 
             i += 3;
         }
     }
+
 
     // Variables declaration - do not modify//GEN-BEGIN:variables
     private javax.swing.JButton btnAnalizar;
