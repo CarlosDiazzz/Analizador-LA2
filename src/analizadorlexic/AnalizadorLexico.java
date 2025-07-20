@@ -16,13 +16,14 @@ import java.io.FileReader;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.io.InputStream;
+import java.net.URL;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
 import java.util.regex.Pattern;
+import javax.swing.ImageIcon;
 import javax.swing.JFileChooser;
 import javax.swing.JOptionPane;
 import javax.swing.JTextArea;
@@ -62,12 +63,13 @@ public class AnalizadorLexico extends javax.swing.JFrame {
             FlatLaf.registerCustomDefaultsSource("mytheme");
             FlatMacLightLaf.setup();
             UIManager.setLookAndFeel(new FlatMacLightLaf());
-
+                       
         } catch (Exception e) {
             System.out.println("Error al aplicar el tema: " + e);
         }
 
         initComponents();
+        setIconImage(new ImageIcon(getClass().getResource("/imagenes/logo.png")).getImage());
 
         lineasArea.setEditable(false);
         txtSalida.setEditable(false);
@@ -119,7 +121,7 @@ public class AnalizadorLexico extends javax.swing.JFrame {
         lineasArea = new javax.swing.JTextArea();
 
         setDefaultCloseOperation(javax.swing.WindowConstants.EXIT_ON_CLOSE);
-        setTitle("Analizador Lexico");
+        setTitle("Compilador Robotico");
         setAutoRequestFocus(false);
         setBackground(new java.awt.Color(255, 255, 255));
         setExtendedState(6);
@@ -135,7 +137,7 @@ public class AnalizadorLexico extends javax.swing.JFrame {
         jScrollPane2.setViewportView(txtSalida);
 
         jLabel1.setFont(new java.awt.Font("Segoe UI Semibold", 1, 36)); // NOI18N
-        jLabel1.setText("Analizador");
+        jLabel1.setText("Compilador Robotico");
 
         btnAnalizar.setText("Analizar");
         btnAnalizar.addActionListener(new java.awt.event.ActionListener() {
@@ -177,7 +179,7 @@ public class AnalizadorLexico extends javax.swing.JFrame {
                 .addComponent(cargarArchivoButtom)
                 .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED)
                 .addComponent(guardarArchivoButton)
-                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED, 143, Short.MAX_VALUE)
+                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
                 .addComponent(btnAnalizar, javax.swing.GroupLayout.PREFERRED_SIZE, 123, javax.swing.GroupLayout.PREFERRED_SIZE)
                 .addGap(18, 18, 18)
                 .addComponent(limpiarButto, javax.swing.GroupLayout.PREFERRED_SIZE, 107, javax.swing.GroupLayout.PREFERRED_SIZE)
@@ -196,7 +198,7 @@ public class AnalizadorLexico extends javax.swing.JFrame {
             .addGroup(jPanel1Layout.createSequentialGroup()
                 .addContainerGap()
                 .addComponent(jLabel1)
-                .addContainerGap(23, Short.MAX_VALUE))
+                .addContainerGap(javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE))
         );
 
         lineasArea.setColumns(20);
@@ -223,7 +225,7 @@ public class AnalizadorLexico extends javax.swing.JFrame {
                 .addComponent(jPanel1, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
                 .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED)
                 .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.TRAILING)
-                    .addComponent(jScrollPane1, javax.swing.GroupLayout.DEFAULT_SIZE, 535, Short.MAX_VALUE)
+                    .addComponent(jScrollPane1, javax.swing.GroupLayout.DEFAULT_SIZE, 552, Short.MAX_VALUE)
                     .addComponent(jScrollPane2)
                     .addComponent(jScrollPane3))
                 .addContainerGap())
@@ -573,117 +575,127 @@ public class AnalizadorLexico extends javax.swing.JFrame {
     }
 
     private String generarASMDesdeCuadruplos(List<Cuadruplo> cuadruplos) {
-    StringBuilder asm = new StringBuilder();
-    Map<String, Integer> temporales = new HashMap<>();
-    Map<String, Integer> posicionActual = new HashMap<>();
+        StringBuilder asm = new StringBuilder();
+        Map<String, Integer> temporales = new HashMap<>();
+        Map<String, Integer> posicionActual = new HashMap<>();
 
-    asm.append(".MODEL SMALL\n")
-        .append(".STACK 100H\n")
-        .append(".DATA\n")
-        .append("PORTA EQU 00H\n")
-        .append("PORTB EQU 02H\n")
-        .append("PORTC EQU 04H\n")
-        .append("Config EQU 06H\n")
-        .append(".CODE\n")
-        .append("MOV AX, @DATA\n")
-        .append("MOV DS, AX\n\n")
-        .append("MOV DX, Config\n")
-        .append("MOV AL, 10000000B\n")
-        .append("OUT DX, AL\n\n");
+        asm.append(".MODEL SMALL\n")
+                .append(".STACK 100H\n")
+                .append(".DATA\n")
+                .append("PORTA EQU 00H\n")
+                .append("PORTB EQU 02H\n")
+                .append("PORTC EQU 04H\n")
+                .append("Config EQU 06H\n")
+                .append(".CODE\n")
+                .append("MOV AX, @DATA\n")
+                .append("MOV DS, AX\n\n")
+                .append("MOV DX, Config\n")
+                .append("MOV AL, 10000000B\n")
+                .append("OUT DX, AL\n\n");
 
-    int pasoContador = 1;
-    int velocidadActual = 1;
+        int pasoContador = 1;
+        int velocidadActual = 1;
 
-    for (Cuadruplo q : cuadruplos) {
-        String op = q.getOperador().toUpperCase();
+        for (Cuadruplo q : cuadruplos) {
+            String op = q.getOperador().toUpperCase();
 
-        if (op.equals("=") && q.getResultado().startsWith("vel")) {
-            try {
-                int vel = Integer.parseInt(q.getOperando1());
-                temporales.put(q.getResultado(), vel);
-            } catch (NumberFormatException ignored) {}
-        }
-
-        if (op.equals("ASSOC") && q.getResultado().endsWith(".velocidad")) {
-            String variable = q.getOperando1();
-            if (temporales.containsKey(variable)) {
-                velocidadActual = temporales.get(variable);
-            } else {
-                velocidadActual = 10;
-            }
-        }
-
-        if (op.equals("CALL")) {
-            String id = q.getOperando1();
-            int valor = Integer.parseInt(q.getOperando2());
-            String componente = q.getResultado();
-
-            String clave = id + "." + componente;
-            int actual = posicionActual.getOrDefault(clave, 0);
-
-            int diferencia = valor - actual;
-            boolean sentidoHorario = diferencia >= 0;
-            int gradosAbsolutos = Math.abs(diferencia);
-
-            int secuencias = calcularSecuencias(componente, gradosAbsolutos);
-
-            String puerto = switch (componente.toLowerCase()) {
-                case "base" -> "PORTA";
-                case "hombro" -> "PORTB";
-                case "codo" -> "PORTC";
-                case "garra" -> "PORTA";
-                default -> "PORTA";
-            };
-
-            int delay = Math.max(1, 61 - velocidadActual) * 200;
-
-            asm.append("  ; ").append(componente.toUpperCase()).append(" de ").append(id).append("\n");
-            asm.append("  ; Ir de ").append(actual).append("° a ").append(valor).append("°, sentido: ")
-               .append(sentidoHorario ? "Horario" : "Antihorario").append("\n");
-            asm.append("  MOV DX, ").append(puerto).append("\n");
-
-            for (int s = 0; s < secuencias; s++) {
-                for (int i = 1; i <= 4; i++) {
-                    int paso = sentidoHorario ? i : (5 - i);  // Invertir pasos si antihorario
-                    asm.append("  MOV AL, ").append(getSecuenciaPaso(paso)).append("\n");
-                    asm.append("  OUT DX, AL\n");
-                    asm.append("delay").append(pasoContador).append(":\n");
-                    asm.append("  MOV CX, ").append(delay).append("\n");
-                    asm.append("espera").append(pasoContador).append(":\n");
-                    asm.append("  DEC CX\n");
-                    asm.append("  JNZ espera").append(pasoContador).append("\n");
-                    pasoContador++;
+            if (op.equals("=") && q.getResultado().startsWith("vel")) {
+                try {
+                    int vel = Integer.parseInt(q.getOperando1());
+                    temporales.put(q.getResultado(), vel);
+                } catch (NumberFormatException ignored) {
                 }
             }
 
-            asm.append("\n");
+            if (op.equals("ASSOC") && q.getResultado().endsWith(".velocidad")) {
+                String variable = q.getOperando1();
+                if (temporales.containsKey(variable)) {
+                    velocidadActual = temporales.get(variable);
+                } else {
+                    velocidadActual = 10;
+                }
+            }
 
-            // Actualiza la posición
-            posicionActual.put(clave, valor);
+            if (op.equals("CALL")) {
+                String id = q.getOperando1();
+                int valor = Integer.parseInt(q.getOperando2());
+                String componente = q.getResultado();
+
+                String clave = id + "." + componente;
+                int actual = posicionActual.getOrDefault(clave, 0);
+
+                int diferencia = valor - actual;
+                boolean sentidoHorario = diferencia >= 0;
+                int gradosAbsolutos = Math.abs(diferencia);
+
+                int secuencias = calcularSecuencias(componente, gradosAbsolutos);
+
+                String puerto = switch (componente.toLowerCase()) {
+                    case "base" ->
+                        "PORTA";
+                    case "hombro" ->
+                        "PORTB";
+                    case "codo" ->
+                        "PORTC";
+                    case "garra" ->
+                        "PORTA";
+                    default ->
+                        "PORTA";
+                };
+
+                // Invertimos la velocidad antes del cálculo
+                int velocidadInvertida = 61 - velocidadActual;  // 1 → 60, 2 → 59, ..., 60 → 1
+
+// Delay basado en la velocidad invertida
+                int delay = Math.max(1, velocidadInvertida) * 200;
+
+                asm.append("  ; ").append(componente.toUpperCase()).append(" de ").append(id).append("\n");
+                asm.append("  ; Ir de ").append(actual).append("° a ").append(valor).append("°, sentido: ")
+                        .append(sentidoHorario ? "Horario" : "Antihorario").append("\n");
+                asm.append("  MOV DX, ").append(puerto).append("\n");
+
+                for (int s = 0; s < secuencias; s++) {
+                    for (int i = 1; i <= 4; i++) {
+                        int paso = sentidoHorario ? i : (5 - i);  // Invertir pasos si antihorario
+                        asm.append("  MOV AL, ").append(getSecuenciaPaso(paso)).append("\n");
+                        asm.append("  OUT DX, AL\n");
+                        asm.append("delay").append(pasoContador).append(":\n");
+                        asm.append("  MOV CX, ").append(delay).append("\n");
+                        asm.append("espera").append(pasoContador).append(":\n");
+                        asm.append("  DEC CX\n");
+                        asm.append("  JNZ espera").append(pasoContador).append("\n");
+                        pasoContador++;
+                    }
+                }
+
+                asm.append("\n");
+
+                // Actualiza la posición
+                posicionActual.put(clave, valor);
+            }
         }
+
+        asm.append("MOV AH, 4CH\nINT 21H\nEND\n");
+
+        String rutaASM = "C:\\Users\\carlo\\Downloads\\DOSBox2\\Tasm\\robot.asm";
+
+        try (BufferedWriter writer = new BufferedWriter(new FileWriter(rutaASM))) {
+            writer.write(asm.toString());
+            System.out.println("✅ Archivo ASM generado en: " + rutaASM);
+        } catch (IOException e) {
+            e.printStackTrace();
+            JOptionPane.showMessageDialog(null, "Error al guardar archivo .ASM: " + e.getMessage());
+        }
+
+        return rutaASM;
     }
 
-    asm.append("MOV AH, 4CH\nINT 21H\nEND\n");
+    private int calcularSecuencias(String componente, int valor) {
+        double gradosPorPasoElectrico = 0.88; // Paso individual (de 1 a 4)
+        double gradosPorSecuencia = gradosPorPasoElectrico * 4; // Cada ciclo completo = 4 pasos
 
-    String rutaASM = "C:\\Users\\carlo\\Downloads\\DOSBox2\\Tasm\\robot.asm";
-
-    try (BufferedWriter writer = new BufferedWriter(new FileWriter(rutaASM))) {
-        writer.write(asm.toString());
-        System.out.println("✅ Archivo ASM generado en: " + rutaASM);
-    } catch (IOException e) {
-        e.printStackTrace();
-        JOptionPane.showMessageDialog(null, "Error al guardar archivo .ASM: " + e.getMessage());
+        return Math.max(1, (int) Math.round(valor / gradosPorSecuencia));
     }
-
-    return rutaASM;
-}
-
-   private int calcularSecuencias(String componente, int valor) {
-    double gradosPorPasoElectrico = 0.88; // Paso individual (de 1 a 4)
-    double gradosPorSecuencia = gradosPorPasoElectrico * 4; // Cada ciclo completo = 4 pasos
-
-    return Math.max(1, (int) Math.round(valor / gradosPorSecuencia));
-}
 
     private String getSecuenciaPaso(int paso) {
         return switch (paso) {
@@ -867,8 +879,6 @@ public class AnalizadorLexico extends javax.swing.JFrame {
             i += 3;
         }
     }
-
-    
 
 
     // Variables declaration - do not modify//GEN-BEGIN:variables
